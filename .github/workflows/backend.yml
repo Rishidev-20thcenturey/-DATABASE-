@@ -1,0 +1,58 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main, 'feature/**']
+    paths: ['backend/**', '.github/workflows/backend.yml']
+  pull_request:
+    paths: ['backend/**', '.github/workflows/backend.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/food_delivery_ci
+      JWT_ACCESS_SECRET: ci-only-secret-that-is-at-least-32-chars
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: food_delivery_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npx eslint src tests scripts
+
+      - name: Migrate database (CI PostgreSQL service)
+        run: npm run db:migrate
+
+      - name: Test (integration tests start their own embedded PostgreSQL)
+        run: npm test
+
+      - name: Build
+        run: npm run build
