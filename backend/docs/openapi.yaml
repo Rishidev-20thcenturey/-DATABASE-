@@ -1,0 +1,1957 @@
+openapi: 3.1.0
+info:
+  title: Food Delivery API
+  version: 1.0.0
+  description: |
+    REST API for the food delivery platform. Base path `/api/v1`.
+
+    Conventions:
+    - Success: `{ "data": ... }`. Lists: `{ "data": [...], "meta": { page, limit, total, totalPages } }`.
+    - Errors: `{ "error": { "code", "message", "details", "requestId" } }`. Branch on `code`, never on `message`.
+    - Money: integer minor units (paise). `19900` = Rs 199.00. Currency is always `INR`.
+    - Auth: `Authorization: Bearer <accessToken>`. Access tokens last 15 minutes. The refresh token is an
+      HttpOnly cookie named `refresh_token` scoped to `/api/v1/auth`.
+    See docs/API_CONTRACT.md and docs/FRONTEND_INTEGRATION.md for full details.
+  license:
+    name: Proprietary
+servers:
+  - url: http://localhost:4000/api/v1
+    description: Local development (default PORT)
+tags:
+  - name: System
+  - name: Auth
+  - name: Restaurants
+  - name: Addresses
+  - name: Cart
+  - name: Checkout
+  - name: Orders
+  - name: Owner
+  - name: Courier
+  - name: Admin
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [System]
+      summary: Liveness check
+      security: []
+      responses:
+        '200':
+          description: The process is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, properties: { status: { type: string, example: ok } } }
+  /ready:
+    get:
+      operationId: getReady
+      tags: [System]
+      summary: Readiness check (verifies the database)
+      security: []
+      responses:
+        '200':
+          description: The database is reachable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, properties: { status: { type: string, example: ready }, database: { type: string, example: up } } }
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /auth/register:
+    post:
+      operationId: postAuthRegister
+      tags: [Auth]
+      summary: Register a customer account
+      description: Public registration always creates a CUSTOMER. Other roles are assigned by administrators.
+      security: []
+      x-rate-limit: AUTH
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Account created and signed in. Sets the refresh_token cookie.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshCookie'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409':
+          description: Email already registered (`EMAIL_ALREADY_REGISTERED`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/login:
+    post:
+      operationId: postAuthLogin
+      tags: [Auth]
+      summary: Sign in with email and password
+      security: []
+      x-rate-limit: AUTH
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Signed in. Sets the refresh_token cookie.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshCookie'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401':
+          description: Wrong email or password (`INVALID_CREDENTIALS`). The same response is returned for unknown emails.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Account suspended (`FORBIDDEN`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/refresh:
+    post:
+      operationId: postAuthRefresh
+      tags: [Auth]
+      summary: Rotate the refresh token and issue a new access token
+      description: |
+        Reads the `refresh_token` cookie (no body). The presented token is revoked and a new cookie is set.
+        Presenting an already-used token revokes every session for that user (`REFRESH_TOKEN_REUSED`).
+        Requests with a foreign `Origin` header are rejected with 403.
+      security: []
+      parameters:
+        - in: header
+          name: Origin
+          required: false
+          schema: { type: string, format: uri }
+          description: Sent automatically by browsers. Must be in CORS_ORIGINS when present.
+      responses:
+        '200':
+          description: New session. Rotates the refresh_token cookie.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshCookie'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Session' }
+        '401':
+          description: Missing, expired, unknown, or reused refresh token. The cookie is cleared.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Disallowed Origin (`FORBIDDEN`), or account suspended.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/logout:
+    post:
+      operationId: postAuthLogout
+      tags: [Auth]
+      summary: Revoke the current refresh token and clear the cookie
+      security: []
+      parameters:
+        - in: header
+          name: Origin
+          required: false
+          schema: { type: string, format: uri }
+      responses:
+        '204':
+          description: Logged out. No body.
+        '403':
+          description: Disallowed Origin.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/me:
+    get:
+      operationId: getAuthMe
+      tags: [Auth]
+      summary: Return the authenticated user
+      responses:
+        '200':
+          description: The current user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /restaurants:
+    get:
+      operationId: getRestaurants
+      tags: [Restaurants]
+      summary: List publicly visible (ACTIVE) restaurants
+      security: []
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - in: query
+          name: q
+          schema: { type: string, minLength: 1, maxLength: 100 }
+          description: Matches restaurant name, cuisine, or an active menu item name (case-insensitive).
+        - in: query
+          name: cuisine
+          schema: { type: string, minLength: 1, maxLength: 60 }
+          description: Exact cuisine match (case-insensitive).
+        - in: query
+          name: open
+          schema: { type: string, enum: ['true', 'false'] }
+          description: When `true`, only restaurants accepting orders right now (IST opening hours).
+        - in: query
+          name: postalCode
+          schema: { type: string, pattern: '^[0-9]{6}$' }
+        - in: query
+          name: sort
+          schema: { type: string, enum: [rating, name, newest, minOrder], default: rating }
+      responses:
+        '200':
+          description: A page of restaurants.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RestaurantSummary' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /restaurants/{restaurantId}:
+    get:
+      operationId: getRestaurantsRestaurantId
+      tags: [Restaurants]
+      summary: Get one ACTIVE restaurant
+      security: []
+      parameters:
+        - { $ref: '#/components/parameters/RestaurantId' }
+      responses:
+        '200':
+          description: The restaurant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RestaurantDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /restaurants/{restaurantId}/menu:
+    get:
+      operationId: getRestaurantsRestaurantIdMenu
+      tags: [Restaurants]
+      summary: Menu grouped by category (active items only)
+      security: []
+      parameters:
+        - { $ref: '#/components/parameters/RestaurantId' }
+      responses:
+        '200':
+          description: Categories in display order, each with its active items.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/MenuCategory' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /restaurants/{restaurantId}/reviews:
+    get:
+      operationId: getRestaurantsRestaurantIdReviews
+      tags: [Restaurants]
+      summary: Paginated reviews for a restaurant
+      security: []
+      parameters:
+        - { $ref: '#/components/parameters/RestaurantId' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: A page of reviews. Customers appear by first name only.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Review' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /menu-items/{itemId}:
+    get:
+      operationId: getMenuItemsItemId
+      tags: [Restaurants]
+      summary: Get one active menu item
+      security: []
+      parameters:
+        - { $ref: '#/components/parameters/ItemId' }
+      responses:
+        '200':
+          description: The menu item.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/MenuItem' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /me/addresses:
+    get:
+      operationId: getMeAddresses
+      tags: [Addresses]
+      summary: List the customer's addresses (default first)
+      responses:
+        '200':
+          description: All addresses for the customer.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Address' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      operationId: postMeAddresses
+      tags: [Addresses]
+      summary: Add an address
+      description: "The first address is always the default. Setting isDefault true moves the default flag."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressInput' }
+      responses:
+        '201':
+          description: The created address.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Address' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /me/addresses/{addressId}:
+    parameters:
+      - { $ref: '#/components/parameters/AddressId' }
+    patch:
+      operationId: patchMeAddressesAddressId
+      tags: [Addresses]
+      summary: Update an address you own
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressPatch' }
+      responses:
+        '200':
+          description: The updated address.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Address' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Cannot unset the default directly (`DEFAULT_ADDRESS_REQUIRED`). Set another address as default instead.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      operationId: deleteMeAddressesAddressId
+      tags: [Addresses]
+      summary: Delete an address you own
+      description: If the deleted address was the default, the most recent remaining address becomes the default.
+      responses:
+        '204':
+          description: Deleted. No body.
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /cart:
+    get:
+      operationId: getCart
+      tags: [Cart]
+      summary: Get the current cart with an estimated price breakdown
+      description: |
+        Totals here are estimates from current prices. Checkout recalculates everything on the server.
+        `warnings` lists unavailable items and an unmet minimum order.
+      responses:
+        '200':
+          description: The cart.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Cart' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      operationId: deleteCart
+      tags: [Cart]
+      summary: Empty the cart
+      responses:
+        '200':
+          description: The empty cart.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Cart' }
+
+  /cart/items:
+    post:
+      operationId: postCartItems
+      tags: [Cart]
+      summary: Add a menu item to the cart
+      description: |
+        Adding quantities of an item already in the cart increases its quantity (max 50).
+        If the cart holds items from another restaurant, the request fails with `CART_RESTAURANT_MISMATCH`
+        unless `replaceExistingCart` is `true`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddCartItemRequest' }
+      responses:
+        '201':
+          description: The updated cart.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Cart' }
+        '400':
+          description: Invalid input, or quantity over the limit (`QUANTITY_LIMIT_EXCEEDED`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Item unavailable (`ITEM_UNAVAILABLE`) or another restaurant's items are in the cart (`CART_RESTAURANT_MISMATCH`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /cart/items/{itemId}:
+    parameters:
+      - { $ref: '#/components/parameters/CartItemId' }
+    patch:
+      operationId: patchCartItemsItemId
+      tags: [Cart]
+      summary: Set the quantity of a cart item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity]
+              additionalProperties: false
+              properties:
+                quantity: { type: integer, minimum: 1, maximum: 50 }
+      responses:
+        '200':
+          description: The updated cart.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Cart' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The item is no longer available (`ITEM_UNAVAILABLE`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      operationId: deleteCartItemsItemId
+      tags: [Cart]
+      summary: Remove a cart item
+      responses:
+        '200':
+          description: The updated cart. The restaurant is cleared when the cart becomes empty.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Cart' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /checkout/preview:
+    post:
+      operationId: postCheckoutPreview
+      tags: [Checkout]
+      summary: Validate the cart and return the authoritative price without creating an order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [addressId]
+              additionalProperties: false
+              properties:
+                addressId: { $ref: '#/components/schemas/Uuid' }
+      responses:
+        '200':
+          description: Preview result. `canPlaceOrder` is false when `blockers` is non-empty.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/CheckoutPreview' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Cart empty (`CART_EMPTY`) or items unavailable (`ITEM_UNAVAILABLE`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /checkout:
+    post:
+      operationId: postCheckout
+      tags: [Checkout]
+      summary: Place an order from the cart
+      description: |
+        Validates the cart, address, restaurant state, item availability, and minimum order inside one
+        database transaction, calculates prices on the server, creates the order and item snapshots, and
+        empties the cart.
+
+        Send an `Idempotency-Key` header on every checkout attempt (optional in the API, but required for safe retries;
+        8 to 100 characters: letters, digits, `-`, `_`). Without a key, a retried request can create a second order. Retrying the same request with the
+        same key returns the original order with HTTP 200 and `Idempotent-Replayed: true`. Reusing a key for a
+        different request returns 409 `IDEMPOTENCY_KEY_REUSED`.
+
+        Only `COD` (cash on delivery) is accepted. Online payments are not implemented.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema: { type: string, minLength: 8, maxLength: 100, pattern: '^[A-Za-z0-9_-]+$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutRequest' }
+      responses:
+        '201':
+          description: The order was created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OrderDetail' }
+        '200':
+          description: Replay of a previous request with the same Idempotency-Key.
+          headers:
+            Idempotent-Replayed:
+              schema: { type: string, enum: ['true'] }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OrderDetail' }
+        '400':
+          description: Invalid body or Idempotency-Key (`VALIDATION_ERROR`, `INVALID_IDEMPOTENCY_KEY`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            Business rule failure. Codes: `CART_EMPTY`, `ITEM_UNAVAILABLE`, `RESTAURANT_UNAVAILABLE`,
+            `RESTAURANT_CLOSED`, `MINIMUM_ORDER_NOT_MET`, `IDEMPOTENCY_KEY_REUSED`, `PAYMENT_METHOD_UNAVAILABLE`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /orders:
+    get:
+      operationId: getOrders
+      tags: [Orders]
+      summary: List your orders, newest first
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+      responses:
+        '200':
+          description: A page of your orders.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/OrderDetail' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /orders/{orderId}:
+    get:
+      operationId: getOrdersOrderId
+      tags: [Orders]
+      summary: Get one of your orders, including its timeline
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      responses:
+        '200':
+          description: The order. Orders you do not own return 404.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OrderDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /orders/{orderId}/cancel:
+    post:
+      operationId: postOrdersOrderIdCancel
+      tags: [Orders]
+      summary: Cancel your order (only while the restaurant has not responded)
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 300 }
+      responses:
+        '200':
+          description: The cancelled order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OrderDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Not cancellable any more (`ORDER_NOT_CANCELLABLE`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /orders/{orderId}/review:
+    post:
+      operationId: postOrdersOrderIdReview
+      tags: [Orders]
+      summary: Review a delivered order (once per order)
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              additionalProperties: false
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: [string, 'null'], maxLength: 1000 }
+      responses:
+        '201':
+          description: The review. Restaurant rating aggregates are updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/CreatedReview' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Not delivered yet (`ORDER_NOT_REVIEWABLE`) or already reviewed (`REVIEW_ALREADY_EXISTS`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /owner/restaurants:
+    get:
+      operationId: getOwnerRestaurants
+      tags: [Owner]
+      summary: List restaurants you own (any status)
+      responses:
+        '200':
+          description: Your restaurants.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RestaurantDetail' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /owner/restaurants/{restaurantId}:
+    parameters:
+      - { $ref: '#/components/parameters/RestaurantId' }
+    get:
+      operationId: getOwnerRestaurantsRestaurantId
+      tags: [Owner]
+      summary: Get a restaurant you own
+      responses:
+        '200':
+          description: The restaurant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RestaurantDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: patchOwnerRestaurantsRestaurantId
+      tags: [Owner]
+      summary: Update your restaurant's details
+      description: Owners cannot change `status`, `taxBps`, or ratings. Administrators control those.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestaurantOwnerPatch' }
+      responses:
+        '200':
+          description: The updated restaurant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RestaurantDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /owner/restaurants/{restaurantId}/menu:
+    get:
+      operationId: getOwnerRestaurantsRestaurantIdMenu
+      tags: [Owner]
+      summary: Full menu including inactive and unavailable items
+      parameters:
+        - { $ref: '#/components/parameters/RestaurantId' }
+      responses:
+        '200':
+          description: Categories with all items.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/OwnerMenuCategory' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /owner/restaurants/{restaurantId}/categories:
+    post:
+      operationId: postOwnerRestaurantsRestaurantIdCategories
+      tags: [Owner]
+      summary: Create a menu category
+      parameters:
+        - { $ref: '#/components/parameters/RestaurantId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryInput' }
+      responses:
+        '201':
+          description: The created category (id plus the submitted fields).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /owner/restaurants/{restaurantId}/categories/{categoryId}:
+    patch:
+      operationId: patchOwnerRestaurantsRestaurantIdCategoriesCategoryId
+      tags: [Owner]
+      summary: Update a menu category
+      parameters:
+        - { $ref: '#/components/parameters/RestaurantId' }
+        - { $ref: '#/components/parameters/CategoryId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryPatch' }
+      responses:
+        '200':
+          description: The updated category.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OwnerMenuCategoryHeader' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /owner/restaurants/{restaurantId}/menu-items:
+    post:
+      operationId: postOwnerRestaurantsRestaurantIdMenuItems
+      tags: [Owner]
+      summary: Create a menu item
+      parameters:
+        - { $ref: '#/components/parameters/RestaurantId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuItemInput' }
+      responses:
+        '201':
+          description: The created item.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /owner/restaurants/{restaurantId}/menu-items/{itemId}:
+    parameters:
+      - { $ref: '#/components/parameters/RestaurantId' }
+      - { $ref: '#/components/parameters/ItemId' }
+    patch:
+      operationId: patchOwnerRestaurantsRestaurantIdMenuItemsItemId
+      tags: [Owner]
+      summary: Update a menu item (price, availability, details)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuItemPatch' }
+      responses:
+        '200':
+          description: Summary of the updated item.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/MenuItemOwnerSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteOwnerRestaurantsRestaurantIdMenuItemsItemId
+      tags: [Owner]
+      summary: Deactivate a menu item (kept for order history)
+      responses:
+        '200':
+          description: The item is deactivated and unavailable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { $ref: '#/components/schemas/Uuid' }
+                      is_active: { type: boolean, const: false }
+                      deactivated: { type: boolean, const: true }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /owner/restaurants/{restaurantId}/orders:
+    get:
+      operationId: getOwnerRestaurantsRestaurantIdOrders
+      tags: [Owner]
+      summary: Orders placed at your restaurant
+      parameters:
+        - { $ref: '#/components/parameters/RestaurantId' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+      responses:
+        '200':
+          description: A page of orders.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/OrderDetail' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /owner/orders/{orderId}/accept:
+    post:
+      operationId: postOwnerOrdersOrderIdAccept
+      tags: [Owner]
+      summary: Accept a pending order (moves it to CONFIRMED)
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      responses:
+        '200':
+          description: The confirmed order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OrderDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidTransition' }
+
+  /owner/orders/{orderId}/reject:
+    post:
+      operationId: postOwnerOrdersOrderIdReject
+      tags: [Owner]
+      summary: Reject a pending order
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 300 }
+      responses:
+        '200':
+          description: The rejected order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OrderDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidTransition' }
+
+  /owner/orders/{orderId}/status:
+    patch:
+      operationId: patchOwnerOrdersOrderIdStatus
+      tags: [Owner]
+      summary: Move a confirmed order to PREPARING or READY_FOR_PICKUP
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              additionalProperties: false
+              properties:
+                status: { type: string, enum: [PREPARING, READY_FOR_PICKUP] }
+      responses:
+        '200':
+          description: The updated order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OrderDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidTransition' }
+
+  /courier/deliveries:
+    get:
+      operationId: getCourierDeliveries
+      tags: [Courier]
+      summary: Deliveries assigned to you
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - in: query
+          name: status
+          schema: { type: string, enum: [ASSIGNED, COMPLETED, CANCELLED] }
+      responses:
+        '200':
+          description: A page of your deliveries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/CourierDelivery' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /courier/deliveries/{orderId}:
+    get:
+      operationId: getCourierDeliveriesOrderId
+      tags: [Courier]
+      summary: Order details for a delivery assigned to you
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      responses:
+        '200':
+          description: The order. Deliveries not assigned to you return 404.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OrderDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /courier/deliveries/{orderId}/status:
+    patch:
+      operationId: patchCourierDeliveriesOrderIdStatus
+      tags: [Courier]
+      summary: Record pickup, out-for-delivery, or delivery
+      description: Pickup is allowed only from READY_FOR_PICKUP. Delivery marks COD as collected.
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              additionalProperties: false
+              properties:
+                status: { type: string, enum: [PICKED_UP, OUT_FOR_DELIVERY, DELIVERED] }
+      responses:
+        '200':
+          description: The updated order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OrderDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidTransition' }
+
+  /admin/users:
+    get:
+      operationId: getAdminUsers
+      tags: [Admin]
+      summary: List users
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - in: query
+          name: role
+          schema: { $ref: '#/components/schemas/Role' }
+        - in: query
+          name: status
+          schema: { type: string, enum: [ACTIVE, SUSPENDED] }
+        - in: query
+          name: q
+          schema: { type: string, minLength: 1, maxLength: 100 }
+          description: Matches name or email.
+      responses:
+        '200':
+          description: A page of users.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/users/{userId}:
+    patch:
+      operationId: patchAdminUsersUserId
+      tags: [Admin]
+      summary: Change a user's role or status (audited)
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                role: { $ref: '#/components/schemas/Role' }
+                status: { type: string, enum: [ACTIVE, SUSPENDED] }
+      responses:
+        '200':
+          description: The updated user (id, role, status).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { $ref: '#/components/schemas/Uuid' }
+                      role: { $ref: '#/components/schemas/Role' }
+                      status: { type: string, enum: [ACTIVE, SUSPENDED] }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Administrators cannot suspend or demote themselves (`SELF_MODIFICATION_NOT_ALLOWED`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /admin/restaurants:
+    get:
+      operationId: getAdminRestaurants
+      tags: [Admin]
+      summary: List all restaurants (any status)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - in: query
+          name: status
+          schema: { type: string, enum: [PENDING_APPROVAL, ACTIVE, SUSPENDED] }
+      responses:
+        '200':
+          description: A page of restaurants.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RestaurantDetail' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/restaurants/{restaurantId}:
+    patch:
+      operationId: patchAdminRestaurantsRestaurantId
+      tags: [Admin]
+      summary: Approve, suspend, or configure a restaurant (audited)
+      parameters:
+        - { $ref: '#/components/parameters/RestaurantId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                status: { type: string, enum: [PENDING_APPROVAL, ACTIVE, SUSPENDED] }
+                taxBps: { type: integer, minimum: 0, maximum: 10000, description: Tax in basis points (500 = 5%). }
+                isAcceptingOrders: { type: boolean }
+      responses:
+        '200':
+          description: The updated restaurant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RestaurantDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/orders:
+    get:
+      operationId: getAdminOrders
+      tags: [Admin]
+      summary: List all orders
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+      responses:
+        '200':
+          description: A page of orders.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/OrderDetail' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/orders/{orderId}/assign-courier:
+    post:
+      operationId: postAdminOrdersOrderIdAssignCourier
+      tags: [Admin]
+      summary: Assign an active courier to an order before pickup (audited)
+      description: Allowed while the order is CONFIRMED, PREPARING, or READY_FOR_PICKUP. Reassigning replaces the previous courier.
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courierId]
+              additionalProperties: false
+              properties:
+                courierId: { $ref: '#/components/schemas/Uuid' }
+      responses:
+        '200':
+          description: The order with the assigned courier.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OrderDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Order not assignable (`ORDER_NOT_ASSIGNABLE`) or invalid courier (`INVALID_COURIER`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /admin/orders/{orderId}/cancel:
+    post:
+      operationId: postAdminOrdersOrderIdCancel
+      tags: [Admin]
+      summary: Cancel an order (audited). Allowed only while the order is PENDING_RESTAURANT_CONFIRMATION or CONFIRMED.
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 300 }
+      responses:
+        '200':
+          description: The cancelled order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OrderDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidTransition' }
+
+  /admin/audit-logs:
+    get:
+      operationId: getAdminAuditLogs
+      tags: [Admin]
+      summary: Audit log of sensitive administrative changes
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: A page of audit entries, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuditLog' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token from /auth/login, /auth/register, or /auth/refresh. Valid for 15 minutes by default.
+
+  headers:
+    RefreshCookie:
+      description: HttpOnly refresh token cookie. Scoped to /api/v1/auth. Not readable by JavaScript.
+      schema:
+        type: string
+        example: refresh_token=...; Path=/api/v1/auth; HttpOnly; SameSite=Lax
+
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+    RestaurantId:
+      in: path
+      name: restaurantId
+      required: true
+      schema: { $ref: '#/components/schemas/Uuid' }
+    ItemId:
+      in: path
+      name: itemId
+      required: true
+      schema: { $ref: '#/components/schemas/Uuid' }
+    CartItemId:
+      in: path
+      name: itemId
+      required: true
+      description: The cart item ID (from `cart.items[].id`), not the menu item ID.
+      schema: { $ref: '#/components/schemas/Uuid' }
+    AddressId:
+      in: path
+      name: addressId
+      required: true
+      schema: { $ref: '#/components/schemas/Uuid' }
+    OrderId:
+      in: path
+      name: orderId
+      required: true
+      schema: { $ref: '#/components/schemas/Uuid' }
+    CategoryId:
+      in: path
+      name: categoryId
+      required: true
+      schema: { $ref: '#/components/schemas/Uuid' }
+    UserId:
+      in: path
+      name: userId
+      required: true
+      schema: { $ref: '#/components/schemas/Uuid' }
+
+  responses:
+    ValidationError:
+      description: Invalid input (`VALIDATION_ERROR`). See `error.details` for the offending fields.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthenticated:
+      description: Missing or invalid access token (`UNAUTHENTICATED`, `TOKEN_INVALID`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Your role is not allowed to perform this action (`FORBIDDEN`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found, or not visible to you (`NOT_FOUND`). Ownership failures use 404 on purpose.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidTransition:
+      description: |
+        The order cannot move to that status (`INVALID_STATUS_TRANSITION`), or the role cannot make that move
+        (`FORBIDDEN`, 403, for role mismatches).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Too many requests (`RATE_LIMITED`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServiceUnavailable:
+      description: Not ready (`NOT_READY`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+    Role:
+      type: string
+      enum: [CUSTOMER, RESTAURANT_OWNER, COURIER, ADMIN]
+    OrderStatus:
+      type: string
+      description: |
+        Allowed transitions (role in brackets):
+        PENDING_RESTAURANT_CONFIRMATION -> CONFIRMED [RESTAURANT_OWNER], REJECTED [RESTAURANT_OWNER], CANCELLED [CUSTOMER, ADMIN].
+        CONFIRMED -> PREPARING [RESTAURANT_OWNER], CANCELLED [ADMIN].
+        PREPARING -> READY_FOR_PICKUP [RESTAURANT_OWNER].
+        READY_FOR_PICKUP -> PICKED_UP [COURIER, ADMIN].
+        PICKED_UP -> OUT_FOR_DELIVERY [COURIER, ADMIN].
+        OUT_FOR_DELIVERY -> DELIVERED [COURIER, ADMIN].
+        REJECTED, CANCELLED, DELIVERED are terminal.
+      enum:
+        - PENDING_RESTAURANT_CONFIRMATION
+        - REJECTED
+        - CANCELLED
+        - CONFIRMED
+        - PREPARING
+        - READY_FOR_PICKUP
+        - PICKED_UP
+        - OUT_FOR_DELIVERY
+        - DELIVERED
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details, requestId]
+          properties:
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            requestId: { type: string }
+    PageMeta:
+      type: object
+      required: [page, limit, total, totalPages]
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 8, description: At most 72 bytes. }
+        phone: { type: string, pattern: '^\+?[0-9]{10,15}$' }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 1, maxLength: 72 }
+    Session:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, const: Bearer }
+        expiresIn: { type: integer, description: Seconds until the access token expires. Example 900. }
+        user: { $ref: '#/components/schemas/User' }
+    User:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: [string, 'null'] }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { type: string, enum: [ACTIVE, SUSPENDED] }
+        createdAt: { type: string, format: date-time }
+
+    Money:
+      type: object
+      description: Pricing breakdown in minor units.
+      required: [subtotalMinor, deliveryFeeMinor, taxMinor, discountMinor, totalMinor, currency]
+      properties:
+        subtotalMinor: { type: integer, minimum: 0 }
+        deliveryFeeMinor: { type: integer, minimum: 0 }
+        taxMinor: { type: integer, minimum: 0 }
+        discountMinor: { type: integer, minimum: 0, description: Always 0 until coupons exist. }
+        totalMinor: { type: integer, minimum: 0 }
+        currency: { type: string, const: INR }
+
+    RestaurantSummary:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        logoUrl: { type: [string, 'null'], format: uri }
+        coverUrl: { type: [string, 'null'], format: uri }
+        cuisines: { type: array, items: { type: string } }
+        city: { type: string }
+        postalCode: { type: string }
+        opensAt: { type: string, example: '09:00' }
+        closesAt: { type: string, example: '23:00' }
+        isOpen: { type: boolean, description: Open right now (accepting orders and within IST hours). }
+        minOrderMinor: { type: integer }
+        deliveryFeeMinor: { type: integer }
+        prepMinutes: { type: integer }
+        deliveryMinutes: { type: integer }
+        ratingAverage: { type: number }
+        ratingCount: { type: integer }
+        currency: { type: string, const: INR }
+    RestaurantDetail:
+      allOf:
+        - $ref: '#/components/schemas/RestaurantSummary'
+        - type: object
+          properties:
+            status: { type: string, enum: [PENDING_APPROVAL, ACTIVE, SUSPENDED] }
+            isAcceptingOrders: { type: boolean }
+            address:
+              type: object
+              properties:
+                line: { type: string }
+                city: { type: string }
+                state: { type: string }
+                postalCode: { type: string }
+                country: { type: string, const: IN }
+    RestaurantOwnerPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 150 }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        logoUrl: { type: [string, 'null'], format: uri }
+        coverUrl: { type: [string, 'null'], format: uri }
+        cuisines: { type: array, maxItems: 10, items: { type: string, minLength: 1, maxLength: 40 } }
+        addressLine: { type: string, minLength: 1, maxLength: 300 }
+        city: { type: string }
+        state: { type: string }
+        postalCode: { type: string, pattern: '^[0-9]{6}$' }
+        opensAt: { type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
+        closesAt: { type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
+        minOrderMinor: { type: integer, minimum: 0 }
+        deliveryFeeMinor: { type: integer, minimum: 0 }
+        prepMinutes: { type: integer, minimum: 0, maximum: 240 }
+        deliveryMinutes: { type: integer, minimum: 0, maximum: 240 }
+        isAcceptingOrders: { type: boolean }
+
+    MenuItem:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        restaurantId: { $ref: '#/components/schemas/Uuid' }
+        categoryId: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        imageUrl: { type: [string, 'null'], format: uri }
+        priceMinor: { type: integer, minimum: 0 }
+        isVeg: { type: [boolean, 'null'] }
+        dietaryLabels: { type: array, items: { type: string } }
+        isAvailable: { type: boolean }
+        currency: { type: string, const: INR }
+    MenuCategory:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        displayOrder: { type: integer }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { $ref: '#/components/schemas/Uuid' }
+              name: { type: string }
+              description: { type: [string, 'null'] }
+              imageUrl: { type: [string, 'null'] }
+              priceMinor: { type: integer }
+              isVeg: { type: [boolean, 'null'] }
+              dietaryLabels: { type: array, items: { type: string } }
+              isAvailable: { type: boolean }
+    OwnerMenuCategory:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        displayOrder: { type: integer }
+        isActive: { type: boolean }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { $ref: '#/components/schemas/Uuid' }
+              name: { type: string }
+              description: { type: [string, 'null'] }
+              imageUrl: { type: [string, 'null'] }
+              priceMinor: { type: integer }
+              isVeg: { type: [boolean, 'null'] }
+              dietaryLabels: { type: array, items: { type: string } }
+              isAvailable: { type: boolean }
+              isActive: { type: boolean }
+    OwnerMenuCategoryHeader:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        displayOrder: { type: integer }
+        isActive: { type: boolean }
+    CategoryInput:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: [string, 'null'], maxLength: 500 }
+        displayOrder: { type: integer, minimum: 0, maximum: 10000 }
+        isActive: { type: boolean }
+    CategoryPatch:
+      allOf:
+        - $ref: '#/components/schemas/CategoryInput'
+      required: []
+    MenuItemInput:
+      type: object
+      required: [categoryId, name, priceMinor]
+      additionalProperties: false
+      properties:
+        categoryId: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string, minLength: 1, maxLength: 150 }
+        description: { type: [string, 'null'], maxLength: 1000 }
+        imageUrl: { type: [string, 'null'], format: uri }
+        priceMinor: { type: integer, minimum: 0, maximum: 10000000 }
+        isVeg: { type: [boolean, 'null'] }
+        dietaryLabels: { type: array, maxItems: 10, items: { type: string, minLength: 1, maxLength: 40 } }
+        isAvailable: { type: boolean }
+    MenuItemPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        categoryId: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string, minLength: 1, maxLength: 150 }
+        description: { type: [string, 'null'], maxLength: 1000 }
+        imageUrl: { type: [string, 'null'], format: uri }
+        priceMinor: { type: integer, minimum: 0, maximum: 10000000 }
+        isVeg: { type: [boolean, 'null'] }
+        dietaryLabels: { type: array, maxItems: 10, items: { type: string, minLength: 1, maxLength: 40 } }
+        isAvailable: { type: boolean }
+    MenuItemOwnerSummary:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        priceMinor: { type: integer }
+        isAvailable: { type: boolean }
+        isActive: { type: boolean }
+
+    Address:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        label: { type: [string, 'null'] }
+        recipientName: { type: string }
+        recipientPhone: { type: string }
+        line1: { type: string }
+        landmark: { type: [string, 'null'] }
+        city: { type: string }
+        state: { type: string }
+        postalCode: { type: string }
+        country: { type: string, const: IN }
+        latitude: { type: [number, 'null'] }
+        longitude: { type: [number, 'null'] }
+        instructions: { type: [string, 'null'] }
+        isDefault: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AddressInput:
+      type: object
+      required: [recipientName, recipientPhone, line1, city, state, postalCode]
+      additionalProperties: false
+      properties:
+        label: { type: [string, 'null'], maxLength: 40 }
+        recipientName: { type: string, minLength: 1, maxLength: 120 }
+        recipientPhone: { type: string, pattern: '^\+?[0-9]{10,15}$' }
+        line1: { type: string, minLength: 1, maxLength: 200 }
+        landmark: { type: [string, 'null'], maxLength: 200 }
+        city: { type: string, minLength: 1, maxLength: 100 }
+        state: { type: string, minLength: 1, maxLength: 100 }
+        postalCode: { type: string, pattern: '^[0-9]{6}$' }
+        country: { type: string, const: IN, default: IN }
+        latitude: { type: [number, 'null'], minimum: -90, maximum: 90 }
+        longitude: { type: [number, 'null'], minimum: -180, maximum: 180 }
+        instructions: { type: [string, 'null'], maxLength: 500 }
+        isDefault: { type: boolean }
+    AddressPatch:
+      allOf:
+        - $ref: '#/components/schemas/AddressInput'
+      required: []
+
+    CartItem:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        menuItemId: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        unitPriceMinor: { type: integer }
+        quantity: { type: integer, minimum: 1, maximum: 50 }
+        lineTotalMinor: { type: integer }
+        isAvailable: { type: boolean }
+    Cart:
+      type: object
+      properties:
+        restaurant:
+          type: [object, 'null']
+          properties:
+            id: { $ref: '#/components/schemas/Uuid' }
+            name: { type: string }
+            isOpen: { type: boolean }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CartItem' }
+        pricing:
+          type: [object, 'null']
+          allOf:
+            - $ref: '#/components/schemas/Money'
+        minimumOrderMinor: { type: integer }
+        itemCount: { type: integer }
+        warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string, enum: [ITEM_UNAVAILABLE, MINIMUM_ORDER_NOT_MET] }
+              message: { type: string }
+              cartItemId: { $ref: '#/components/schemas/Uuid' }
+    AddCartItemRequest:
+      type: object
+      required: [menuItemId, quantity]
+      additionalProperties: false
+      properties:
+        menuItemId: { $ref: '#/components/schemas/Uuid' }
+        quantity: { type: integer, minimum: 1, maximum: 50 }
+        replaceExistingCart: { type: boolean, default: false }
+
+    CheckoutRequest:
+      type: object
+      required: [addressId, paymentMethod]
+      additionalProperties: false
+      properties:
+        addressId: { $ref: '#/components/schemas/Uuid' }
+        paymentMethod: { type: string, const: COD }
+        customerNote: { type: [string, 'null'], maxLength: 500 }
+    CheckoutPreview:
+      type: object
+      properties:
+        restaurant:
+          type: object
+          properties:
+            id: { $ref: '#/components/schemas/Uuid' }
+            name: { type: string }
+        pricing: { $ref: '#/components/schemas/Money' }
+        minimumOrderMinor: { type: integer }
+        availablePaymentMethods:
+          type: array
+          items: { type: string, enum: [COD] }
+        blockers:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string, enum: [RESTAURANT_CLOSED, MINIMUM_ORDER_NOT_MET] }
+              message: { type: string }
+        canPlaceOrder: { type: boolean }
+
+    OrderItem:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        menuItemId: { type: [string, 'null'], format: uuid }
+        name: { type: string, description: Snapshot of the name at order time. }
+        unitPriceMinor: { type: integer, description: Snapshot of the price at order time. }
+        quantity: { type: integer }
+        lineTotalMinor: { type: integer }
+    OrderDetail:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        orderNumber: { type: string, example: FD-261010-1A2B3C4D }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        paymentMethod: { type: string, const: COD }
+        paymentStatus: { type: string, enum: [COD_PENDING, COD_COLLECTED, NOT_CHARGED] }
+        restaurant:
+          type: object
+          properties:
+            id: { $ref: '#/components/schemas/Uuid' }
+            name: { type: string }
+        deliveryAddress:
+          type: object
+          properties:
+            label: { type: [string, 'null'] }
+            recipientName: { type: string }
+            recipientPhone: { type: string }
+            line1: { type: string }
+            landmark: { type: [string, 'null'] }
+            city: { type: string }
+            state: { type: string }
+            postalCode: { type: string }
+            country: { type: string }
+            latitude: { type: [number, 'null'] }
+            longitude: { type: [number, 'null'] }
+            instructions: { type: [string, 'null'] }
+        customerNote: { type: [string, 'null'] }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OrderItem' }
+        pricing: { $ref: '#/components/schemas/Money' }
+        courier:
+          type: [object, 'null']
+          properties:
+            id: { $ref: '#/components/schemas/Uuid' }
+            name: { type: [string, 'null'] }
+        timeline:
+          type: array
+          description: Status history in order.
+          items:
+            type: object
+            properties:
+              status: { $ref: '#/components/schemas/OrderStatus' }
+              at: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        confirmedAt: { type: [string, 'null'], format: date-time }
+        deliveredAt: { type: [string, 'null'], format: date-time }
+        cancelledAt: { type: [string, 'null'], format: date-time }
+        cancelReason: { type: [string, 'null'] }
+
+    Review:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: [string, 'null'] }
+        customerFirstName: { type: string }
+        createdAt: { type: string, format: date-time }
+    CreatedReview:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        orderId: { $ref: '#/components/schemas/Uuid' }
+        restaurantId: { $ref: '#/components/schemas/Uuid' }
+        rating: { type: integer }
+        comment: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+
+    CourierDelivery:
+      type: object
+      properties:
+        orderId: { $ref: '#/components/schemas/Uuid' }
+        orderNumber: { type: string }
+        deliveryStatus: { type: string, enum: [ASSIGNED, COMPLETED, CANCELLED] }
+        orderStatus: { $ref: '#/components/schemas/OrderStatus' }
+        restaurant:
+          type: object
+          properties:
+            id: { $ref: '#/components/schemas/Uuid' }
+            name: { type: string }
+            address: { type: string }
+        deliveryAddress:
+          type: object
+          properties:
+            recipientName: { type: string }
+            recipientPhone: { type: string }
+            line1: { type: string }
+            landmark: { type: [string, 'null'] }
+            city: { type: string }
+            postalCode: { type: string }
+            instructions: { type: [string, 'null'] }
+        amountToCollectMinor: { type: integer, description: Cash to collect (0 once collected or for prepaid orders). }
+        currency: { type: string, const: INR }
+        assignedAt: { type: string, format: date-time }
+
+    AuditLog:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        actorId: { type: [string, 'null'], format: uuid }
+        action: { type: string, enum: [USER_UPDATED, RESTAURANT_UPDATED, COURIER_ASSIGNED, ORDER_CANCELLED] }
+        entityType: { type: string, enum: [user, restaurant, order] }
+        entityId: { type: string }
+        details: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
