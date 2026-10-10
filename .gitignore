@@ -1,0 +1,11 @@
+# Build / generated artifacts
+node_modules/
+dist/
+*.zip
+*.tar.gz
+
+# Local env
+.env
+
+# Local embedded PostgreSQL data
+.local-pgdata/

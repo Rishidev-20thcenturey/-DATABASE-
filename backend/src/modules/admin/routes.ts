@@ -8,7 +8,7 @@ import { conflict, notFound } from '../../utils/errors.js';
 import { audit } from '../../utils/audit.js';
 import { pageMeta, sendData, sendList } from '../../utils/http.js';
 import { idParams, pageQuery } from '../../validators/common.js';
-import { buildOrderView, transitionOrder } from '../orders/service.js';
+import { buildOrderView, buildOrderViews, transitionOrder } from '../orders/service.js';
 import { RESTAURANT_SELECT, toRestaurantDetail, type RestaurantRow } from '../restaurants/service.js';
 
 const userParams = idParams('userId');
@@ -198,7 +198,7 @@ adminRouter.get('/orders', validate('query', ordersQuery), async (req, res) => {
     ),
     query<{ total: string }>(`SELECT count(*) AS total FROM orders o WHERE ${where}`, values),
   ]);
-  const orders = await Promise.all(rows.rows.map((r) => buildOrderView(r.id)));
+  const orders = await buildOrderViews(rows.rows.map((r) => r.id));
   sendList(res, orders, pageMeta(q.page, q.limit, Number(count.rows[0].total)));
 });
 
