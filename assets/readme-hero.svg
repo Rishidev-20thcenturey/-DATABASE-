@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="420" viewBox="0 0 1440 420" role="img" aria-labelledby="title desc">
+  <title id="title">Food Delivery API</title>
+  <desc id="desc">A custom dark navy and orange architecture banner for the food delivery API project.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#08111F"/>
+      <stop offset="54%" stop-color="#10243A"/>
+      <stop offset="100%" stop-color="#0C1728"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFB36B"/>
+      <stop offset="100%" stop-color="#F97316"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#92F1D5"/>
+      <stop offset="100%" stop-color="#2DD4BF"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#172D45" stop-opacity=".97"/>
+      <stop offset="100%" stop-color="#101F32" stop-opacity=".97"/>
+    </linearGradient>
+    <pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse">
+      <path d="M 34 0 L 0 0 0 34" fill="none" stroke="#8AA4C5" stroke-opacity=".08" stroke-width="1"/>
+    </pattern>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#020617" flood-opacity=".28"/>
+    </filter>
+  </defs>
+
+  <rect width="1440" height="420" rx="28" fill="url(#background)"/>
+  <rect width="1440" height="420" rx="28" fill="url(#grid)"/>
+  <circle cx="1210" cy="28" r="170" fill="#F97316" opacity=".12" filter="url(#softGlow)"/>
+  <circle cx="875" cy="375" r="170" fill="#2DD4BF" opacity=".08" filter="url(#softGlow)"/>
+  <path d="M0 350 C240 310 390 438 650 390 S1110 325 1440 364" fill="none" stroke="#F97316" stroke-opacity=".2" stroke-width="2"/>
+  <path d="M0 372 C280 332 410 452 680 412 S1120 350 1440 390" fill="none" stroke="#2DD4BF" stroke-opacity=".16" stroke-width="1.5"/>
+
+  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
+    <rect x="70" y="54" width="236" height="32" rx="16" fill="#FFFFFF" fill-opacity=".07" stroke="#FFFFFF" stroke-opacity=".13"/>
+    <circle cx="88" cy="70" r="4" fill="#2DD4BF"/>
+    <text x="102" y="75" font-size="12" font-weight="700" letter-spacing="2.2" fill="#C9D8E8">DATABASE / BACKEND SYSTEMS</text>
+
+    <text x="68" y="156" font-size="60" font-weight="800" letter-spacing="-2.6" fill="#FFFFFF">FOOD DELIVERY</text>
+    <text x="69" y="219" font-size="60" font-weight="800" letter-spacing="-2.6" fill="url(#accent)">API PLATFORM</text>
+    <text x="72" y="258" font-size="18" font-weight="400" fill="#C2D0E0">Secure ordering workflows — from discovery to delivery.</text>
+
+    <g transform="translate(70 294)">
+      <rect width="162" height="42" rx="12" fill="#FFFFFF" fill-opacity=".065" stroke="#FFFFFF" stroke-opacity=".11"/>
+      <path d="M17 13h16v16H17z M21 9h8 M21 21h8 M21 25h5" fill="none" stroke="#FCA56B" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="43" y="26" font-size="13" font-weight="650" fill="#F3F7FB">REST · API v1</text>
+    </g>
+    <g transform="translate(244 294)">
+      <rect width="171" height="42" rx="12" fill="#FFFFFF" fill-opacity=".065" stroke="#FFFFFF" stroke-opacity=".11"/>
+      <circle cx="23" cy="21" r="9" fill="none" stroke="#72E3CC" stroke-width="1.7"/>
+      <path d="M14 21h18 M23 12c4 4 4 14 0 18 M23 12c-4 4-4 14 0 18" fill="none" stroke="#72E3CC" stroke-width="1.2"/>
+      <text x="42" y="26" font-size="13" font-weight="650" fill="#F3F7FB">PostgreSQL</text>
+    </g>
+    <g transform="translate(427 294)">
+      <rect width="158" height="42" rx="12" fill="#FFFFFF" fill-opacity=".065" stroke="#FFFFFF" stroke-opacity=".11"/>
+      <path d="M17 14l6-4 6 4v8c0 5-6 9-6 9s-6-4-6-9z" fill="none" stroke="#A6BEFF" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="M20 21l2 2 4-5" fill="none" stroke="#A6BEFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="39" y="26" font-size="13" font-weight="650" fill="#F3F7FB">Role-secured</text>
+    </g>
+
+    <text x="72" y="381" font-size="12" font-weight="600" letter-spacing="1.5" fill="#7891AB">NODE.JS  ·  TYPESCRIPT  ·  EXPRESS 5  ·  OPENAPI 3.1</text>
+
+    <g filter="url(#shadow)">
+      <rect x="735" y="48" width="644" height="322" rx="22" fill="url(#card)" stroke="#8CA5C1" stroke-opacity=".23"/>
+      <path d="M735 91h644" stroke="#8CA5C1" stroke-opacity=".16"/>
+      <circle cx="762" cy="70" r="4" fill="#F97316"/>
+      <circle cx="777" cy="70" r="4" fill="#FBBF24"/>
+      <circle cx="792" cy="70" r="4" fill="#2DD4BF"/>
+      <text x="825" y="75" font-size="11" font-weight="700" letter-spacing="1.8" fill="#94A9C1">REQUEST → BUSINESS LOGIC → DATA</text>
+    </g>
+
+    <g>
+      <rect x="770" y="123" width="142" height="92" rx="15" fill="#142B42" stroke="#59738E" stroke-opacity=".6"/>
+      <circle cx="805" cy="150" r="12" fill="#213F5B" stroke="#7B9BB9" stroke-width="1.1"/>
+      <circle cx="805" cy="146" r="4" fill="#C9D7E6"/>
+      <path d="M797 157c2-6 14-6 16 0" fill="none" stroke="#C9D7E6" stroke-width="2" stroke-linecap="round"/>
+      <text x="790" y="183" font-size="12" font-weight="700" fill="#E8F0F7">Clients</text>
+      <text x="790" y="200" font-size="10" fill="#8DA7C2">Web / Mobile</text>
+
+      <path d="M914 169h36" stroke="#6B89A6" stroke-width="2" stroke-linecap="round"/>
+      <path d="M943 163l7 6-7 6" fill="none" stroke="#6B89A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <rect x="956" y="112" width="196" height="114" rx="16" fill="#172F47" stroke="#F97316" stroke-opacity=".8" stroke-width="1.4"/>
+      <rect x="975" y="130" width="35" height="35" rx="10" fill="url(#accent)"/>
+      <path d="M983 141h19 M983 147h14 M983 153h17" stroke="#332016" stroke-width="2" stroke-linecap="round"/>
+      <text x="975" y="188" font-size="15" font-weight="800" fill="#FFFFFF">Express API</text>
+      <text x="975" y="207" font-size="12" font-weight="600" fill="#FDBA74">/api/v1</text>
+
+      <path d="M1154 169h32" stroke="#6B89A6" stroke-width="2" stroke-linecap="round"/>
+      <path d="M1179 163l7 6-7 6" fill="none" stroke="#6B89A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <rect x="1192" y="123" width="151" height="92" rx="15" fill="#142B42" stroke="#2DD4BF" stroke-opacity=".65"/>
+      <ellipse cx="1221" cy="145" rx="12" ry="5" fill="none" stroke="#76E3CF" stroke-width="1.5"/>
+      <path d="M1209 145v17c0 7 24 7 24 0v-17 M1209 153c0 7 24 7 24 0" fill="none" stroke="#76E3CF" stroke-width="1.5"/>
+      <text x="1208" y="185" font-size="12" font-weight="700" fill="#E8F0F7">PostgreSQL</text>
+      <text x="1208" y="200" font-size="10" fill="#8DA7C2">Persistent data</text>
+    </g>
+
+    <g>
+      <rect x="770" y="250" width="164" height="77" rx="13" fill="#FFFFFF" fill-opacity=".035" stroke="#7894AE" stroke-opacity=".23"/>
+      <circle cx="789" cy="272" r="5" fill="#2DD4BF"/>
+      <text x="802" y="276" font-size="11" font-weight="700" fill="#D7E4F0">AUTH &amp; SECURITY</text>
+      <text x="787" y="298" font-size="10.5" fill="#8DA7C2">JWT · validation · roles</text>
+      <text x="787" y="313" font-size="10.5" fill="#8DA7C2">Rate limits · request IDs</text>
+
+      <rect x="947" y="250" width="177" height="77" rx="13" fill="#FFFFFF" fill-opacity=".035" stroke="#7894AE" stroke-opacity=".23"/>
+      <circle cx="966" cy="272" r="5" fill="#F97316"/>
+      <text x="979" y="276" font-size="11" font-weight="700" fill="#D7E4F0">DOMAIN MODULES</text>
+      <text x="964" y="298" font-size="10.5" fill="#8DA7C2">Cart · checkout · orders</text>
+      <text x="964" y="313" font-size="10.5" fill="#8DA7C2">Owner · courier · admin</text>
+
+      <rect x="1137" y="250" width="206" height="77" rx="13" fill="#FFFFFF" fill-opacity=".035" stroke="#7894AE" stroke-opacity=".23"/>
+      <circle cx="1156" cy="272" r="5" fill="#A6BEFF"/>
+      <text x="1169" y="276" font-size="11" font-weight="700" fill="#D7E4F0">DEVELOPER TOOLING</text>
+      <text x="1154" y="298" font-size="10.5" fill="#8DA7C2">OpenAPI · migrations</text>
+      <text x="1154" y="313" font-size="10.5" fill="#8DA7C2">Tests · CI workflow</text>
+    </g>
+  </g>
+</svg>
