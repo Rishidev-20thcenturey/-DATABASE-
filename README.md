@@ -1,4 +1,18 @@
-# -DATABASE- — Food Delivery API
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=wave&color=0:0f172a,100:ea580c&height=220&section=header&text=DATABASE&fontSize=58&fontColor=ffffff&fontAlignY=35&desc=Food%20Delivery%20API%20%7C%20Node.js%20%7C%20PostgreSQL&descAlignY=57&descSize=18&animation=fadeIn" alt="-DATABASE- Food Delivery API animated header" width="100%" />
+</p>
+
+<p align="center">
+  <img src="https://readme-typing-svg.demolab.com/?font=Fira+Code&weight=500&size=17&pause=1100&color=EA580C&center=true&vCenter=true&width=720&height=45&lines=REST+API+for+Food+Delivery;Built+with+TypeScript+and+PostgreSQL;Customers+%7C+Restaurants+%7C+Couriers+%7C+Admins" alt="Animated project description" />
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Node.js-20.19%2B-339933?logo=node.js&logoColor=white" alt="Node.js 20.19+" />
+  <img src="https://img.shields.io/badge/TypeScript-typed-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white" alt="Express 5" />
+  <img src="https://img.shields.io/badge/PostgreSQL-database-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/OpenAPI-3.1-6BA539?logo=swagger&logoColor=white" alt="OpenAPI 3.1" />
+</p>
 
 A REST API backend for a food-delivery platform, built with **Node.js, TypeScript, Express 5, PostgreSQL, and Zod**. The backend provides the core workflows for customers, restaurant owners, couriers, and administrators.
 
