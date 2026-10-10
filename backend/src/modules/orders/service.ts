@@ -49,35 +49,32 @@ interface OrderRow {
 // Views
 // ---------------------------------------------------------------------------
 
-export async function buildOrderView(orderId: string, db?: Queryable) {
-  const orderResult = await query<
-    OrderRow & { restaurant_name: string; courier_name: string | null }
-  >(
-    `SELECT o.*, r.name AS restaurant_name, d.courier_id, cu.name AS courier_name
-     FROM orders o
+type OrderViewRow = OrderRow & { restaurant_name: string; courier_name: string | null };
+
+interface OrderItemRow {
+  order_id: string;
+  id: string;
+  menu_item_id: string | null;
+  item_name: string;
+  unit_price_minor: number;
+  quantity: number;
+  line_total_minor: number;
+}
+
+interface OrderHistoryRow {
+  order_id: string;
+  to_status: string;
+  created_at: Date;
+}
+
+const ORDER_VIEW_COLUMNS = `o.*, r.name AS restaurant_name, d.courier_id, cu.name AS courier_name`;
+const ORDER_VIEW_FROM = `FROM orders o
      JOIN restaurants r ON r.id = o.restaurant_id
      LEFT JOIN deliveries d ON d.order_id = o.id AND d.status <> 'CANCELLED'
-     LEFT JOIN users cu ON cu.id = d.courier_id
-     WHERE o.id = $1`,
-    [orderId],
-    db,
-  );
-  const order = orderResult.rows[0];
-  if (!order) throw notFound('Order');
+     LEFT JOIN users cu ON cu.id = d.courier_id`;
 
-  const [items, history] = await Promise.all([
-    query<{ id: string; menu_item_id: string | null; item_name: string; unit_price_minor: number; quantity: number; line_total_minor: number }>(
-      'SELECT id, menu_item_id, item_name, unit_price_minor, quantity, line_total_minor FROM order_items WHERE order_id = $1 ORDER BY item_name, id',
-      [orderId],
-      db,
-    ),
-    query<{ to_status: string; created_at: Date }>(
-      'SELECT to_status, created_at FROM order_status_history WHERE order_id = $1 ORDER BY created_at, id',
-      [orderId],
-      db,
-    ),
-  ]);
-
+/** Pure mapper: turns an order row plus its already-loaded items and history into the API shape. */
+function mapOrderView(order: OrderViewRow, itemRows: OrderItemRow[], historyRows: OrderHistoryRow[]) {
   const address = order.delivery_address;
   return {
     id: order.id,
@@ -101,7 +98,7 @@ export async function buildOrderView(orderId: string, db?: Queryable) {
       instructions: address.instructions ?? null,
     },
     customerNote: order.customer_note,
-    items: items.rows.map((item) => ({
+    items: itemRows.map((item) => ({
       id: item.id,
       menuItemId: item.menu_item_id,
       name: item.item_name,
@@ -118,7 +115,7 @@ export async function buildOrderView(orderId: string, db?: Queryable) {
       currency: 'INR' as const,
     },
     courier: order.courier_id ? { id: order.courier_id, name: order.courier_name } : null,
-    timeline: history.rows.map((h) => ({ status: h.to_status, at: h.created_at.toISOString() })),
+    timeline: historyRows.map((h) => ({ status: h.to_status, at: h.created_at.toISOString() })),
     createdAt: order.created_at.toISOString(),
     updatedAt: order.updated_at.toISOString(),
     confirmedAt: order.confirmed_at?.toISOString() ?? null,
@@ -128,7 +125,71 @@ export async function buildOrderView(orderId: string, db?: Queryable) {
   };
 }
 
-export type OrderView = Awaited<ReturnType<typeof buildOrderView>>;
+export type OrderView = ReturnType<typeof mapOrderView>;
+
+/**
+ * Builds views for many orders in a fixed three queries (orders, items, history) rather than three
+ * queries per order, which is what made list endpoints N+1. Rows are grouped in memory and the
+ * result is returned in the same order as `orderIds`.
+ */
+export async function buildOrderViews(orderIds: string[], db?: Queryable): Promise<OrderView[]> {
+  if (orderIds.length === 0) return [];
+
+  const ordersSql = `SELECT ${ORDER_VIEW_COLUMNS} ${ORDER_VIEW_FROM} WHERE o.id = ANY($1::uuid[])`;
+  const itemsSql = `SELECT order_id, id, menu_item_id, item_name, unit_price_minor, quantity, line_total_minor
+     FROM order_items WHERE order_id = ANY($1::uuid[]) ORDER BY item_name, id`;
+  const historySql = `SELECT order_id, to_status, created_at FROM order_status_history
+     WHERE order_id = ANY($1::uuid[]) ORDER BY created_at, id`;
+
+  let orderRows: OrderViewRow[];
+  let itemRows: OrderItemRow[];
+  let historyRows: OrderHistoryRow[];
+
+  if (db) {
+    // `db` is a single checked-out connection (a transaction). pg queues concurrent queries on one
+    // connection and deprecates that pattern (it is removed in pg 9), so run them one at a time.
+    orderRows = (await query<OrderViewRow>(ordersSql, [orderIds], db)).rows;
+    itemRows = (await query<OrderItemRow>(itemsSql, [orderIds], db)).rows;
+    historyRows = (await query<OrderHistoryRow>(historySql, [orderIds], db)).rows;
+  } else {
+    // No executor means the pool, where each query takes its own connection and can run in parallel.
+    const [orders, items, history] = await Promise.all([
+      query<OrderViewRow>(ordersSql, [orderIds]),
+      query<OrderItemRow>(itemsSql, [orderIds]),
+      query<OrderHistoryRow>(historySql, [orderIds]),
+    ]);
+    orderRows = orders.rows;
+    itemRows = items.rows;
+    historyRows = history.rows;
+  }
+
+  const itemsByOrder = new Map<string, OrderItemRow[]>();
+  for (const row of itemRows) {
+    const bucket = itemsByOrder.get(row.order_id);
+    if (bucket) bucket.push(row);
+    else itemsByOrder.set(row.order_id, [row]);
+  }
+
+  const historyByOrder = new Map<string, OrderHistoryRow[]>();
+  for (const row of historyRows) {
+    const bucket = historyByOrder.get(row.order_id);
+    if (bucket) bucket.push(row);
+    else historyByOrder.set(row.order_id, [row]);
+  }
+
+  const ordersById = new Map(orderRows.map((row) => [row.id, row]));
+  return orderIds.map((orderId) => {
+    const order = ordersById.get(orderId);
+    if (!order) throw notFound('Order');
+    return mapOrderView(order, itemsByOrder.get(orderId) ?? [], historyByOrder.get(orderId) ?? []);
+  });
+}
+
+/** Builds the view for one order. Throws 404 when the order does not exist. */
+export async function buildOrderView(orderId: string, db?: Queryable): Promise<OrderView> {
+  const [order] = await buildOrderViews([orderId], db);
+  return order;
+}
 
 // ---------------------------------------------------------------------------
 // Checkout
@@ -493,7 +554,7 @@ export async function listCustomerOrders(customerId: string, status: OrderStatus
     ),
     query<{ total: string }>(`SELECT count(*) AS total FROM orders o WHERE ${where}`, values),
   ]);
-  const orders = await Promise.all(rows.rows.map((row) => buildOrderView(row.id)));
+  const orders = await buildOrderViews(rows.rows.map((row) => row.id));
   return { orders, total: Number(count.rows[0].total) };
 }
 

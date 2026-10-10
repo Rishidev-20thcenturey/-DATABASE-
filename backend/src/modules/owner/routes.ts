@@ -6,7 +6,7 @@ import { input, validate } from '../../middleware/validate.js';
 import { ORDER_STATUSES, type OrderStatus } from '../../types/domain.js';
 import { notFound } from '../../utils/errors.js';
 import { pageMeta, sendData, sendList } from '../../utils/http.js';
-import { buildOrderView, transitionOrder } from '../orders/service.js';
+import { buildOrderViews, transitionOrder } from '../orders/service.js';
 import { RESTAURANT_SELECT, toRestaurantDetail, type RestaurantRow } from '../restaurants/service.js';
 import { idParams, minorUnits, optionalUrl, pageQuery, postalCode, timeOfDay } from '../../validators/common.js';
 
@@ -363,7 +363,7 @@ ownerRouter.get(
       ),
       query<{ total: string }>(`SELECT count(*) AS total FROM orders o WHERE ${where}`, values),
     ]);
-    const orders = await Promise.all(rows.rows.map((r) => buildOrderView(r.id)));
+    const orders = await buildOrderViews(rows.rows.map((r) => r.id));
     sendList(res, orders, pageMeta(q.page, q.limit, Number(count.rows[0].total)));
   },
 );

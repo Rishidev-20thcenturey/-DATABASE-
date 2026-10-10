@@ -3,6 +3,8 @@
 Last updated: 2026-10-10. This page records what is built, what was run to verify it, and what is still open. It describes
 the backend in `backend/`. The frontend has not been started by this work.
 
+The backend is merged into `main` (PR #1, `feature/backend-api`) and the CI workflow is green on GitHub.
+
 ## 1. Summary
 
 | Area | Status |
@@ -15,8 +17,8 @@ the backend in `backend/`. The frontend has not been started by this work.
 | Reviews | Implemented and tested |
 | OpenAPI 3.1 spec | Written, validated with Redocly, and checked against the code by a test |
 | Frontend integration guide | Written (`FRONTEND_INTEGRATION.md`) |
-| CI workflow | Written (`.github/workflows/backend.yml`). **Not yet run on GitHub** (nothing pushed) |
-| Commit / push / PR | **Not done.** Waiting for your go-ahead (see section 7) |
+| CI workflow | Written (`.github/workflows/backend.yml`) and **passing on GitHub** (3/3 runs on PR #1: branch push, `pull_request`, and the merge to `main`) |
+| Commit / push / PR | Merged — PR #1 `feature/backend-api` → `main` |
 
 ## 2. Endpoints
 
@@ -46,7 +48,7 @@ All commands were run from `backend/` on the final code in this branch of work.
 | --- | --- | --- |
 | Type check | `npx tsc -p tsconfig.json --noEmit` | exit 0, no errors |
 | Lint | `npx eslint src tests scripts` | exit 0, no errors |
-| Tests | `npx vitest run` | **8 files, 120 tests, all passed** (about 26 s) |
+| Tests | `npx vitest run` | **9 files, 125 tests, all passed** (about 37 s) |
 | Build | `npm run build` | exit 0, output to `dist/` |
 | OpenAPI validation | `npx @redocly/cli@latest lint docs/openapi.yaml` | valid. 0 errors, 15 warnings (missing 4xx on some operations) |
 | Migrations | `npm run db:migrate` against a local PostgreSQL | applied `001_init.sql` |
@@ -62,6 +64,7 @@ Test files and what they cover:
 - `owner-admin.test.ts`: owner menu management, admin user and restaurant management, courier assignment, audit log
 - `seed.test.ts`: seed creates the accounts and menus and is safe to run twice
 - `openapi-contract.test.ts`: spec parses as OpenAPI 3.1, every implemented operation is documented, no documented operation is missing, `/api/v1/openapi.yaml` is served
+- `order-query-performance.test.ts`: order lists are batched (listing twice as many orders costs the same number of queries), and no connection ever has two queries in flight at once
 
 The test run uses its own embedded PostgreSQL on port 54329 and creates it fresh each run.
 
@@ -85,7 +88,7 @@ Against the local dev database (seeded), using `curl`:
 I did not place a full order through the live server by hand. The order flow is covered by `orders-lifecycle.test.ts`
 and `catalog-cart-checkout.test.ts`.
 
-## 4. Bugs found and fixed during this work
+## 4. Bugs and performance problems found and fixed during this work
 
 These were found by the tests and fixed before the verification results above:
 
@@ -96,6 +99,13 @@ These were found by the tests and fixed before the verification results above:
 - Late customer cancel returned 403 instead of 409 `ORDER_NOT_CANCELLABLE`.
 - Restaurant detail was missing `status` and `isAcceptingOrders`.
 - Owner menu item and category updates returned snake_case fields; they now return camelCase like the rest of the API.
+- Order lists were N+1: each order cost three more queries, so a page of 20 orders ran 60+ queries
+  against a pool of 10. `buildOrderViews` now loads the orders, their items, and their status history
+  in three queries total, and `tests/order-query-performance.test.ts` fails if that ever regresses.
+- Batching naively would have pushed three concurrent queries onto a transaction's single connection.
+  pg queues those and deprecates the pattern (it is removed in pg 9), so the batch loads run one at a
+  time when a transaction connection is supplied and in parallel only when each query gets its own
+  pooled connection.
 
 ## 5. Known limitations
 
@@ -119,16 +129,19 @@ These were found by the tests and fixed before the verification results above:
 - Set `CORS_ORIGINS` to the frontend origin.
 - Cross-site HTTPS deployments need `COOKIE_SAMESITE=none` and `COOKIE_SECURE=true`.
 
-## 7. Open items before this can be shared
+## 7. Open items
 
-1. **Your go-ahead to push.** The backend is in `/home/user/DATABASE-work/backend` (plus `.github/workflows/backend.yml`
-   and `.env.example`). Nothing is committed or pushed. The `-DATABASE-` repo is still on `main` with only its README
-   committed, and it has not been changed there.
-2. **Branch name.** The master prompt asks for `feature/backend-api`. This work session is tied to a different branch
-   (`arena/0d90ac7c-rustes-generative-ai`) in a different repository, so I need you to confirm where the backend branch
-   should go before creating it.
-3. **Collaborator access.** Access for the frontend collaborator on `-DATABASE-` is managed by you. I cannot change it.
-4. **CI.** The workflow has not been run on GitHub. It runs typecheck, lint, migrations against a PostgreSQL service,
-   tests, and build. The first run will show whether it passes on GitHub's runners.
-5. **Frontend.** Once the backend branch is pushed, the frontend agent should start from `FRONTEND_INTEGRATION.md`
-   and `openapi.yaml`.
+The backend is committed, pushed, merged to `main`, and CI is green, so nothing here blocks a frontend
+from building against it today.
+
+1. **Frontend.** No frontend work has started. `FRONTEND_INTEGRATION.md` and `docs/openapi.yaml` are the
+   starting point.
+2. **Collaborator access** on `-DATABASE-` is managed by you.
+3. **Online payments.** Cash on delivery is the only implemented payment method.
+4. **Operational gaps to close before real traffic:** request logging (only errors are logged today),
+   a job to delete expired and revoked refresh tokens (the table grows without bound), and shared
+   rate-limit counters if the API ever runs on more than one instance.
+5. **Endpoints still without an automated test:** `GET /owner/restaurants/{id}/orders`,
+   `GET /admin/audit-logs` filters, and `GET /restaurants/{id}/reviews` pagination. They are
+   implemented and were exercised by hand, and the order-list batching is covered indirectly by
+   `order-query-performance.test.ts`.
