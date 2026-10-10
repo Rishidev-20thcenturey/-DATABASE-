@@ -1,13 +1,9 @@
 <p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&amp;color=0:0B1020,45:123B65,100:F97316&amp;height=250&amp;section=header&amp;text=FOOD%20DELIVERY%20API&amp;fontSize=42&amp;fontColor=FFFFFF&amp;fontAlignY=37&amp;desc=One%20API%20%E2%80%A2%20Four%20Roles%20%E2%80%A2%20End-to-End%20Ordering&amp;descAlignY=59&amp;descSize=17&amp;animation=fadeIn" alt="Food Delivery API — animated project header" width="100%" />
+  <img src="assets/readme-hero.svg" alt="Custom Food Delivery API architecture banner" width="100%" />
 </p>
 
 <p align="center">
-  <img src="https://readme-typing-svg.demolab.com/?font=JetBrains+Mono&amp;weight=500&amp;size=17&amp;pause=1200&amp;color=F97316&amp;center=true&amp;vCenter=true&amp;width=760&amp;height=45&amp;lines=Browse+restaurants+and+menus;Cart%2C+checkout+%26+order+lifecycle;Customer+%7C+Owner+%7C+Courier+%7C+Admin" alt="Project features shown in animated text" />
-</p>
-
-<p align="center">
-  <a href="https://github.com/Rishidev-20thcenturey/-DATABASE-/actions/workflows/backend.yml"><img src="https://github.com/Rishidev-20thcenturey/-DATABASE-/actions/workflows/backend.yml/badge.svg?branch=main" alt="Backend CI" /></a>
+  <a href="https://github.com/Rishidev-20thcenturey/-DATABASE-/actions/workflows/backend.yml"><img src="https://github.com/Rishidev-20thcenturey/-DATABASE-/actions/workflows/backend.yml/badge.svg?branch=main" alt="Backend CI status" /></a>
   <img src="https://img.shields.io/badge/Node.js-20.19%2B-339933?logo=node.js&amp;logoColor=white" alt="Node.js 20.19+" />
   <img src="https://img.shields.io/badge/TypeScript-typed-3178C6?logo=typescript&amp;logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Express-5-111827?logo=express&amp;logoColor=white" alt="Express 5" />
@@ -16,14 +12,15 @@
 </p>
 
 <p align="center">
-  <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick_Start-0B1020?style=for-the-badge&amp;logo=rocket&amp;logoColor=white" alt="Quick start" /></a>
-  <a href="backend/docs/openapi.yaml"><img src="https://img.shields.io/badge/API_Spec-123B65?style=for-the-badge&amp;logo=swagger&amp;logoColor=white" alt="API specification" /></a>
-  <a href="backend/docs/FRONTEND_INTEGRATION.md"><img src="https://img.shields.io/badge/Frontend_Guide-EA580C?style=for-the-badge&amp;logo=readthedocs&amp;logoColor=white" alt="Frontend integration guide" /></a>
+  <a href="#-quick-start">Quick start</a> &nbsp;·&nbsp;
+  <a href="backend/docs/openapi.yaml">API specification</a> &nbsp;·&nbsp;
+  <a href="backend/docs/FRONTEND_INTEGRATION.md">Frontend guide</a> &nbsp;·&nbsp;
+  <a href="backend/docs/INTEGRATION_STATUS.md">Test &amp; project status</a>
 </p>
 
 <p align="center">
-  <strong>A typed REST API for a food-delivery platform.</strong><br/>
-  Restaurant discovery, secure accounts, cart and checkout, order management, courier workflows, and admin tools — built with Node.js, TypeScript, Express 5, and PostgreSQL.
+  <strong>A typed REST API for the full food-delivery order lifecycle.</strong><br/>
+  Browse restaurants, manage carts, calculate prices safely, place orders, and coordinate owner, courier, and admin workflows.
 </p>
 
 > [!NOTE]
