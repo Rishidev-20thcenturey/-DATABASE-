@@ -103,7 +103,7 @@
 
 ## 🏗️ Architecture
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     Client["Web / Mobile Frontend"] --> API["Express 5 API<br/>/api/v1"]
     API --> Middleware["Security · Auth · Validation<br/>Rate limits · Request IDs"]
@@ -111,9 +111,9 @@ flowchart TD
     Modules --> DB[("PostgreSQL")]
     API -.-> Spec["OpenAPI 3.1<br/>/api/v1/openapi.yaml"]
     Docs["Frontend Integration Guide"] -.-> Client
-\`\`\`
+```
 
-The server is the source of truth for prices and order rules. Monetary amounts use integer **paise** (\`19900\` means ₹199.00), not floating-point currency values.
+The server is the source of truth for prices and order rules. Monetary amounts use integer **paise** (`19900` means ₹199.00), not floating-point currency values.
 
 ## 🧰 Technology stack
 
@@ -139,51 +139,51 @@ The server is the source of truth for prices and order rules. Monetary amounts u
 
 From the repository root:
 
-\`\`\`bash
+```bash
 cd backend
 cp .env.example .env
-\`\`\`
+```
 
-Edit \`.env\` and set:
+Edit `.env` and set:
 
-- \`DATABASE_URL\` — PostgreSQL connection string.
-- \`JWT_ACCESS_SECRET\` — a private random secret of at least 32 characters.
-- \`DEV_SEED_PASSWORD\` — development-only password of at least 8 characters for demo accounts.
+- `DATABASE_URL` — PostgreSQL connection string.
+- `JWT_ACCESS_SECRET` — a private random secret of at least 32 characters.
+- `DEV_SEED_PASSWORD` — development-only password of at least 8 characters for demo accounts.
 
-**Never commit real secrets or your \`.env\` file.** The example configuration is for local development only.
+**Never commit real secrets or your `.env` file.** The example configuration is for local development only.
 
 ### 2. Install dependencies
 
-\`\`\`bash
+```bash
 npm ci
-\`\`\`
+```
 
 ### 3. Start the local database
 
-Open a terminal in \`backend/\` and run this command, leaving it running:
+Open a terminal in `backend/` and run this command, leaving it running:
 
-\`\`\`bash
+```bash
 npm run db:embedded
-\`\`\`
+```
 
-This starts the development database on port \`54330\`. Alternatively, configure \`DATABASE_URL\` to use a PostgreSQL instance you manage.
+This starts the development database on port `54330`. Alternatively, configure `DATABASE_URL` to use a PostgreSQL instance you manage.
 
 ### 4. Run migrations and seed demo data
 
-In another terminal, still in \`backend/\`:
+In another terminal, still in `backend/`:
 
-\`\`\`bash
+```bash
 npm run db:migrate
 npm run db:seed
-\`\`\`
+```
 
-The development seed creates sample customer, restaurant-owner, courier, and admin accounts, plus demo restaurants and menu items. Their shared demo password is the value you set in \`DEV_SEED_PASSWORD\`. The seed is idempotent and refuses to run in production.
+The development seed creates sample customer, restaurant-owner, courier, and admin accounts, plus demo restaurants and menu items. Their shared demo password is the value you set in `DEV_SEED_PASSWORD`. The seed is idempotent and refuses to run in production.
 
 ### 5. Start the API
 
-\`\`\`bash
+```bash
 npm run dev
-\`\`\`
+```
 
 | Resource | Local URL |
 | --- | --- |
@@ -195,33 +195,33 @@ npm run dev
 
 ## ⌨️ Useful commands
 
-Run these in \`backend/\`:
+Run these in `backend/`:
 
 | Command | What it does |
 | --- | --- |
-| \`npm run dev\` | Start API with reload |
-| \`npm run build\` | Compile TypeScript to \`dist/\` |
-| \`npm start\` | Run compiled API |
-| \`npm run typecheck\` | Check TypeScript types |
-| \`npm run lint\` | Run ESLint |
-| \`npm test\` | Run tests using a separate test database |
-| \`npm run db:migrate\` | Apply SQL migrations |
-| \`npm run db:seed\` | Populate development demo data |
-| \`npm run db:embedded\` | Start local development PostgreSQL |
+| `npm run dev` | Start API with reload |
+| `npm run build` | Compile TypeScript to `dist/` |
+| `npm start` | Run compiled API |
+| `npm run typecheck` | Check TypeScript types |
+| `npm run lint` | Run ESLint |
+| `npm test` | Run tests using a separate test database |
+| `npm run db:migrate` | Apply SQL migrations |
+| `npm run db:seed` | Populate development demo data |
+| `npm run db:embedded` | Start local development PostgreSQL |
 
 ## 🔌 API overview
 
-Every route is under \`/api/v1\` unless noted otherwise.
+Every route is under `/api/v1` unless noted otherwise.
 
 | Area | Representative routes |
 | --- | --- |
-| Authentication | \`POST /auth/register\`, \`POST /auth/login\`, \`POST /auth/refresh\`, \`POST /auth/logout\` |
-| Restaurants &amp; menus | \`GET /restaurants\`, \`GET /restaurants/{id}/menu\`, \`GET /restaurants/{id}/reviews\` |
-| Addresses &amp; cart | \`/me/addresses\`, \`/cart\`, \`/cart/items\` |
-| Checkout &amp; orders | \`POST /checkout/preview\`, \`POST /checkout\`, \`GET /orders\`, \`GET /orders/{id}\` |
-| Restaurant owner | \`/owner/restaurants\`, \`/owner/orders\` |
-| Courier | \`/courier/deliveries\` |
-| Administrator | \`/admin/users\`, \`/admin/restaurants\`, \`/admin/orders\`, \`/admin/audit-logs\` |
+| Authentication | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout` |
+| Restaurants &amp; menus | `GET /restaurants`, `GET /restaurants/{id}/menu`, `GET /restaurants/{id}/reviews` |
+| Addresses &amp; cart | `/me/addresses`, `/cart`, `/cart/items` |
+| Checkout &amp; orders | `POST /checkout/preview`, `POST /checkout`, `GET /orders`, `GET /orders/{id}` |
+| Restaurant owner | `/owner/restaurants`, `/owner/orders` |
+| Courier | `/courier/deliveries` |
+| Administrator | `/admin/users`, `/admin/restaurants`, `/admin/orders`, `/admin/audit-logs` |
 
 See the [OpenAPI specification](backend/docs/openapi.yaml) for complete request and response schemas.
 
@@ -236,7 +236,7 @@ Use these documents as the source of truth when connecting a web or mobile front
 | [OpenAPI 3.1](backend/docs/openapi.yaml) | Endpoint and schema reference |
 | [Integration status](backend/docs/INTEGRATION_STATUS.md) | Test coverage, verification record, and open issues |
 
-**Browser note:** Requests that use the refresh-token cookie must include credentials (for Fetch, \`credentials: "include"\`), and the frontend origin must be permitted by \`CORS_ORIGINS\`. Keep the access token in memory rather than local storage.
+**Browser note:** Requests that use the refresh-token cookie must include credentials (for Fetch, `credentials: "include"`), and the frontend origin must be permitted by `CORS_ORIGINS`. Keep the access token in memory rather than local storage.
 
 ## ✅ Verification
 
@@ -255,7 +255,7 @@ This is an **MVP backend**, not a fully deployed production service.
 
 ## 📁 Project structure
 
-\`\`\`text
+```text
 .
 ├── .github/
 │   └── workflows/
@@ -274,7 +274,7 @@ This is an **MVP backend**, not a fully deployed production service.
     │   └── INTEGRATION_STATUS.md
     ├── .env.example
     └── package.json
-\`\`\`
+```
 
 ---
 
